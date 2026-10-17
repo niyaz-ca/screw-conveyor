@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Screw Conveyor Estimator</title>
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <svg viewBox="0 0 40 24" width="34" height="20" aria-hidden="true"><rect x="1" y="5" width="38" height="14" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M5 19 L11 5 M11 19 L17 5 M17 19 L23 5 M23 19 L29 5 M29 19 L35 5" stroke="currentColor" stroke-width="1.6"/></svg>
+    <div>
+      <div class="brand-t">Screw Conveyor Estimator</div>
+      <div class="brand-s" id="projLabel">New project</div>
+    </div>
+  </div>
+  <div class="actions">
+    <button class="btn" id="btnNew" title="Start a new project with default values">New</button>
+    <button class="btn" id="btnOpen" title="Open a saved project or import a file">Open</button>
+    <button class="btn" id="btnSave" title="Save this project in this browser">Save</button>
+    <button class="btn" id="btnXlsx" title="Download BOQ, purchase list and design summary as an Excel workbook">Export Excel</button>
+    <button class="btn primary" id="btnPrint" title="Print or save as PDF">Print / PDF</button>
+  </div>
+</header>
+
+<nav class="steps" id="steps" role="tablist">
+  <button data-step="design"><b>1</b> Design</button>
+  <button data-step="boq"><b>2</b> BOQ &amp; cost</button>
+</nav>
+
+<main class="layout" id="layout">
+  <section class="pane" id="pane"></section>
+  <aside class="side" id="side"></aside>
+</main>
+
+<div id="report" class="report" aria-hidden="true"></div>
+
+<dialog id="dlgOpen">
+  <form method="dialog" class="dlg">
+    <h3>Open project</h3>
+    <div id="projList" class="projlist"></div>
+    <div class="dlg-row">
+      <label class="btn"><input type="file" id="fileImport" accept=".json" hidden>Import file…</label>
+      <button class="btn" id="btnExportAll" type="button">Download all projects</button>
+      <span class="grow"></span>
+      <button class="btn" value="cancel">Close</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toast" class="toast" role="status"></div>
+
+<script src="js/data.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/xlsx.js"></script>
+<script src="js/export.js"></script>
+<script src="js/ui.js"></script>
+</body>
+</html>

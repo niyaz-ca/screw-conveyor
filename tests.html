@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Engine Tests</title>
+<style>
+  :root { --bg:#fff; --fg:#1b1f24; --mut:#5b6470; --line:#e3e6ea; --ok:#1a7f45; --bad:#c62828; }
+  @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]) { --bg:#15171a; --fg:#e8eaed; --mut:#9aa3ad; --line:#2b2f35; --ok:#4cc38a; --bad:#ff6b6b; } }
+  body { background:var(--bg); color:var(--fg); font:14px/1.45 system-ui, sans-serif; margin:0; padding:16px; }
+  h1 { font-size:18px; margin:0 0 4px; } p { color:var(--mut); margin:0 0 12px; }
+  table { border-collapse:collapse; width:100%; max-width:1000px; }
+  td, th { border-bottom:1px solid var(--line); padding:6px 8px; text-align:left; vertical-align:top; }
+  td.n { font-variant-numeric:tabular-nums; text-align:right; }
+  .ok { color:var(--ok); font-weight:600; } .bad { color:var(--bad); font-weight:600; }
+  #sum { font-weight:600; margin:10px 0; }
+  .wrap { overflow-x:auto; }
+</style>
+</head>
+<body>
+<h1>Screw conveyor engine — verification tests</h1>
+<p>Each row compares the engine with a published reference. Tolerance shown per row.</p>
+<div id="sum"></div>
+<div class="wrap"><table id="t"><thead><tr><th>Test</th><th>Reference</th><th>Expected</th><th>Engine</th><th>Tol.</th><th>Result</th></tr></thead><tbody></tbody></table></div>
+<script src="js/data.js"></script>
+<script src="js/engine.js"></script>
+<script src="js/xlsx.js"></script>
+<script src="js/export.js"></script>
+<script>
+const rows = [];
+function check(name, ref, exp, got, tolPct){
+  const ok = Math.abs(got - exp) <= Math.abs(exp)*tolPct/100 + 1e-9;
+  rows.push({name, ref, exp, got, tolPct, ok});
+}
+const base = { matKey:'custom', load:'30A', abr:0, lump:0, lumpClass:1, temp:25, Dmode:'manual', pitchType:'full', flight:'std', paddles:0,
+  flightFab:'sectional', pipeMode:'auto', shaftMode:'auto', shaftMat:'C45', hangerType:'bronze', hangerPolicy:'hangers', maxSection:6,
+  deflRule:'jh', drive:'gm_direct', margin:0, trough:'U', mocScrew:'MS', mocTrough:'MS', mocStruct:'MS', inlets:1, outlets:1, trSec:3, legH:0,
+  endBearing:'flange', seal:'gland', qty:1 };
+
+/* 1 — J&H calculator default case (read from jh.nl on 17-Oct-2026):
+   20 t/h, 700 kg/m³, λ 2.5, 5 m, Ø300 × 300 pitch, pipe 168.3 × 5.6, blade 3 mm, 30 % fill.
+   J&H shows 109.23 rpm, 28.57 m³/h, 0.55 m/s, 0.68 kW, deflection 1.16 mm. */
+const jh = SC.design(Object.assign({}, base, { tph:20, rho:700, lam:2.5, fm:1.0, L:5, angle:0, D:300, pipeMode:'e168_56', tFl:3, flightFab:'helicoid' }));
+check('Volume capacity, m³/h', 'J&H', 28.57, jh.Qv, 0.5);
+check('Screw speed, rpm', 'J&H', 109.23, jh.N, 0.5);
+check('Product speed, m/s', 'J&H', 0.55, jh.vAxial, 1.5);
+check('Power, kW (J&H formula)', 'J&H', 0.68, jh.power.jhKw, 1.5);
+check('Power at shaft, kW (DIN, excl. no-load)', 'J&H', 0.68, jh.power.dinShaftKw - 0.3*5/20, 1.5);
+/* J&H uses a heavier flight-weight approximation (blade length at the pipe), so our
+   deflection is expected to be lower — 15 % tolerance. */
+check('Centre-pipe deflection, mm', 'J&H (approx.)', 1.16, jh.defl, 15);
+
+/* 2 — CEMA worked example (Conveyor Eng. catalog p.22):
+   corn germ 21 lb/ft³, 2000 ft³/h, 48 ft, 18" ribbon flight, bronze hangers, Fm 0.4, 30A.
+   CEMA: N = 60.9 rpm, HPf = 0.671, HPm = 0.919, Fo = 1.74. */
+const cema = SC.design(Object.assign({}, base, { tph: 2000/35.3147*21*16.0185/1000, rho:21*16.0185, fm:0.4, lam:2.3, L:48/3.28084, angle:0,
+  D:457.2, pipeMode:'p4_40', flight:'ribbon', hangerType:'bronze' }));
+check('Speed, rpm', 'CEMA p.22', 60.9, cema.N, 1.5);
+check('Friction HP (HPf)', 'CEMA p.22', 0.671, cema.power.HPf, 2.5);
+check('Material HP (HPm)', 'CEMA p.22', 0.919, cema.power.HPm, 1.0);
+check('Overload factor Fo', 'CEMA p.22', 1.74, cema.power.Fo, 1.0);
+
+/* 3 — CEMA Table D capacity at 1 rpm, 30 % (12", 3" pipe → 12.9 ft³/h; 24", 4½" pipe → 109) */
+const c12 = SC.design(Object.assign({}, base, { tph:10, rho:1000, fm:1, lam:2, L:5, D:304.8, pipeMode:'p3_40' }));
+check('12" capacity per rpm, ft³/h', 'CEMA Table D', 12.9, c12.vRev*60*35.3147, 4);
+const c24 = SC.design(Object.assign({}, base, { tph:10, rho:1000, fm:1, lam:2, L:5, D:609.6, pipeMode:'p4_40' }));
+check('24" capacity per rpm, ft³/h', 'CEMA Table D', 109, c24.vRev*60*35.3147, 4);
+
+/* 4 — CEMA Table D max rpm interpolation, Table L Fd, Table H Fo formula */
+check('Max rpm 12" 30A', 'CEMA Table D', 90, SC.util.maxRpmFor('30A', 304.8), 0.1);
+check('Max rpm 18" 45 %', 'CEMA Table D', 120, SC.util.maxRpmFor('45', 457.2), 0.1);
+check('Incline factor 20° full pitch', 'J&H', 0.7 - 5*0.4/15, SC.util.inclineFactor(20, 1, 'U'), 0.1);
+
+/* 5 — Sectional screw weight vs catalog (12SS512: 12" × 3/16" flights on 3" Sch 40, 11'-9" → 178 lb SS; CS is 2.2 % lower) */
+const w12 = SC.design(Object.assign({}, base, { tph:10, rho:1000, fm:1, lam:2, L:11.75/3.28084 + 0.05, D:304.8, pitchType:'custom', pitch:304.8, pipeMode:'p3_40', tFl:4.76 }));
+check('12" screw weight, kg (CS)', 'Catalog p.34', 178*0.978*0.4536, w12.screwKg, 6);
+
+/* 6 — U-trough weight vs catalog (CTF1210: 12" × 10 ga (3.42 mm), 12 ft → 237 lb incl. end flanges) */
+const tr = SC.design(Object.assign({}, base, { tph:10, rho:1000, fm:1, lam:2, L:12/3.28084, D:304.8, pipeMode:'p3_40' }));
+const tb = SC.boq(Object.assign({}, base, { tTr:3.42, trSec:12/3.28084 }), tr, {});
+const tKg = tb.items.find(i => i.name === 'U-trough').net + tb.items.find(i => i.name.startsWith('Trough end')).net;
+check('12" U-trough 12 ft, kg', 'Catalog p.47', 237*0.4536, tKg, 6);
+
+/* 7 — Auto-design sanity (cement 15 t/h, 8 m): units, margins, shaft fits pipe */
+const au = SC.design(Object.assign({}, base, { tph:15, rho:1500, load:'30B', fm:1.4, lam:3.0, abr:1, L:8, Dmode:'auto' }));
+check('Auto size keeps ≥10 % speed margin (N/max ≤ 0.9)', 'Rule', 1, au.N/au.maxRpm <= 0.9 ? 1 : 0, 0);
+check('Pipe OD reported in mm (> 40)', 'Units', 1, au.pipe.od > 40 ? 1 : 0, 0);
+check('Shaft fits pipe bore (ID ≥ shaft + 10)', 'Rule', 1, (au.pipe.od - 2*au.pipe.t) >= au.shaftMm + 10 ? 1 : 0, 0);
+check('Motor torque within shaft rating', 'CEMA Table Q', 1, au.Tmotor <= au.shaftAllow ? 1 : 0, 0);
+const aub = SC.boq(Object.assign({}, base, { L:8 }), au, {});
+check('BOQ net = sum of items', 'Consistency', aub.items.reduce((a,i)=>a+i.net,0), aub.totals.net, 0.01);
+
+/* 8 — All-in costing: amount = weight × group rate × material factor */
+const rt = Object.assign({}, SC.DEFAULT_RATES);
+const ac = SC.cost(aub, base, rt);
+const fl = ac.lines.find(l => l.id === 'F:Screw flights');
+check('Flights amount = kg × screw rate', 'Rule', fl.net*rt.rScrew, fl.amount, 0.01);
+const ds = ac.lines.find(l => l.id === 'F:Drive shaft');
+check('Drive shaft uses machined-parts rate', 'Rule', rt.rMach, ds.rate, 0.01);
+const ssB = SC.boq(Object.assign({}, base, { L:8, mocTrough:'SS304' }), au, rt);
+const ssT = SC.cost(ssB, base, rt).lines.find(l => l.id === 'F:U-trough');
+check('SS304 trough rate = trough rate × SS factor', 'Rule', rt.rTrough*rt.fSS304, ssT.rate, 0.01);
+check('No separate machining line', 'Rule', 0, ac.lines.filter(l => l.name === 'Machining').length, 0);
+
+/* 9 — Excel export builds a valid zip (starts with "PK") */
+let xl = null;
+try { xl = SC.exportBoqXlsx({ R:au, B:aub, C:ac, inp:Object.assign({}, base, { project:'Test', tag:'SC-01', matName:'Cement', qty:1 }), rates:rt }); } catch(e){ console.error(e); }
+check('Excel export creates a file', 'Export', 1, xl && xl.blob.size > 5000 ? 1 : 0, 0);
+
+/* render */
+const tb2 = document.querySelector('#t tbody');
+rows.forEach(r => {
+  const tr = document.createElement('tr');
+  tr.innerHTML = `<td>${r.name}</td><td>${r.ref}</td><td class="n">${r.exp.toFixed(3)}</td><td class="n">${r.got.toFixed(3)}</td><td class="n">±${r.tolPct}%</td><td class="${r.ok?'ok':'bad'}">${r.ok?'PASS':'FAIL'}</td>`;
+  tb2.appendChild(tr);
+});
+const nOk = rows.filter(r => r.ok).length;
+document.getElementById('sum').innerHTML = `<span class="${nOk===rows.length?'ok':'bad'}">${nOk} / ${rows.length} passed</span>`;
+window.__TESTS = { passed:nOk, total:rows.length, failed: rows.filter(r=>!r.ok).map(r=>r.name+': exp '+r.exp+' got '+r.got.toFixed(3)) };
+</script>
+</body>
+</html>
